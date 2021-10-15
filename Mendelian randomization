@@ -1,0 +1,57 @@
+require(TwoSampleMR)
+require(ggplot2)
+library(dplyr)
+library(MRPRESSO)
+
+#reduce clumping threshold to increase number of snps in GWAS
+### meta-analysed summary stats NY+PPMI as exposure
+dat<-fread("NY_PPMI_GWAS_GALC_non_adj_sep_annotated_significant_matched.TBL")
+
+#dat1 <- format_data(dat, type = "exposure", snps = NULL, header = TRUE, phenotype_col = "Phenotype", snp_col = "SNP", beta_col = "Effect", se_col = "FreqSE",  eaf_col = "Freq1", effect_allele_col = "Allele1", other_allele_col = "Allele2", pval_col = "P-value",  units_col = "units", ncase_col = "ncase", ncontrol_col = "ncontrol", samplesize_col = "samplesize", gene_col = "gene", id_col = "id",  min_pval = 1e-200,  z_col = "z",  info_col = "info",  chr_col = "chr",  pos_col = "pos",  log_pval = FALSE)
+dat1 <- format_data(dat, type = "exposure", snps = NULL, header = TRUE, snp_col = "SNP", beta_col = "Effect", se_col = "FreqSE",  eaf_col = "Freq1", effect_allele_col = "Allele1", other_allele_col = "Allele2", pval_col = "P-value", min_pval = 1e-200, log_pval = FALSE)
+clumped_d <- clump_data(dat1, clump_kb = 10000, clump_r2 = 0.2, clump_p1 = 1, clump_p2 = 1, pop = "EUR")
+write.table(clumped_d, file="NY_PPMI_GWAS_GALC_exposure.txt", row.names=FALSE, quote=FALSE, sep = "\t")
+
+### NY summary stats  as exposure
+dat<-fread("toMeta.NY_GWAS_GALC_snp_sep_annotated_significant.tab")
+dat1 <- format_data(dat, type = "exposure", snps = NULL, header = TRUE, snp_col = "SNP", beta_col = "beta", se_col = "se",  eaf_col = "maf", effect_allele_col = "minorAllele", other_allele_col = "majorAllele", pval_col = "P", samplesize_col = "N", min_pval = 1e-200, log_pval = FALSE)
+#format_data(dat, type = "exposure", snps = NULL, header = TRUE, snp_col = "SNP", beta_col = "Effect", se_col = "FreqSE",  eaf_col = "Freq1", effect_allele_col = "Allele1", other_allele_col = "Allele2", pval_col = "P-value", min_pval = 1e-200, samplesize_col = "samplesize", log_pval = FALSE)
+clump_data(dat1, clump_kb = 10000, clump_r2 = 0.2, clump_p1 = 1, clump_p2 = 1, pop = "EUR")
+write.table(clumped_dd, file="NY_GWAS_GALC_exposure.txt", row.names=FALSE, quote=FALSE, sep = "\t")
+
+### PPMI summary stats as exposure
+dat<-fread("toMeta.PPMI_GWAS_GALC_sep_annotated_significant.tab")
+dat1 <- format_data(dat, type = "exposure", snps = NULL, header = TRUE, snp_col = "SNP", beta_col = "beta", se_col = "se",  eaf_col = "maf", effect_allele_col = "minorAllele", other_allele_col = "majorAllele", pval_col = "P", samplesize_col = "N", min_pval = 1e-200, log_pval = FALSE)
+#format_data(dat, type = "exposure", snps = NULL, header = TRUE, snp_col = "SNP", beta_col = "Effect", se_col = "FreqSE",  eaf_col = "Freq1", effect_allele_col = "Allele1", other_allele_col = "Allele2", pval_col = "P-value", min_pval = 1e-200, samplesize_col = "samplesize", log_pval = FALSE)
+clumped_ddd<-clump_data(dat1, clump_kb = 10000, clump_r2 = 0.2, clump_p1 = 1, clump_p2 = 1, pop = "EUR")
+write.table(clumped_ddd, file="PPMI_GWAS_GALC_exposure.txt", row.names=FALSE, quote=FALSE, sep = "\t")
+
+file <- c ("NY_PPMI_GWAS_GALC_exposure_N.txt", "NY_GWAS_GALC_exposure_N.txt", "PPMI_GWAS_GALC_exposure_N.txt")
+folder <- c("NY_PPMI", "NY", "PPMI")
+for(i in 1:length(file)){
+exp_data <- read_exposure_data(file[i], sep="\t", snp_col = "SNP", beta_col = "beta.exposure",  eaf_col = "eaf.exposure", se_col="se.exposure", effect_allele_col = "effect_allele.exposure", other_allele_col= "other_allele.exposure", pval_col = "pval.exposure", samplesize_col="samplesize.exposure", clump=FALSE)
+out_data <- read_outcome_data(snps = exp_data$SNP,filename = "META_no23_yesUKBB.txt", sep="\t",  snp_col = "SNP", beta_col = "b", se_col = "se", eaf_col = "freq", effect_allele_col = "A1", other_allele_col = "A2", pval_col = "p", ncase_col = "N_cases", ncontrol_col = "N_controls")
+#out_data$r.outcome<- get_r_from_lor(out_data$beta.outcome, out_data$eaf.outcome, out_data$ncase.outcome, out_data$ncontrol.outcome, 0.01,  model = "logit")
+dat <- harmonise_data(exposure_dat=exp_data, outcome_dat=out_data, action=2)
+dat$units.outcome<-"log odds"
+dat$units.exposure<-"log odds"
+dat1<-subset(dat, dat$eaf.exposure!="NA")
+dat1$rsq.exposure<- get_r_from_pn(dat1$pval.exposure, dat1$samplesize.exposure)
+dat1$rsq.outcome<- get_r_from_pn(dat1$pval.outcome, dat1$samplesize.exposure)
+steiger <- steiger_filtering(dat1)
+sig<-subset(steiger, steiger$steiger_dir==TRUE)
+presso <-mr_presso(BetaOutcome = "beta.outcome", BetaExposure = "beta.exposure", SdOutcome = "se.outcome", SdExposure = "se.exposure", OUTLIERtest = TRUE, DISTORTIONtest = TRUE, data = sig, NbDistribution = 1000,  SignifThreshold = 0.05) 
+capture.output(print(presso), file = paste(folder[i], "presso.txt", sep = "/"))
+mr(sig)
+R2<-mean(sig$r.exposure)
+capture.output(print(R2), file = paste(folder[i], "r2.txt", sep = "/"))
+n<-mean(sig$samplesize.exposure)
+k <- nrow(subset(sig, sig$ambiguous == FALSE))
+F<-(R2*(n-1-k))/((1-R2)*k)
+capture.output(print(F), file = paste(folder[i], "f.txt", sep = "/"))
+mr_report(sig, study = folder[i],output_path = folder[i]) 
+res_single <- mr_singlesnp(sig)
+p5 <- mr_forest_plot(res_single)
+p5[[1]]
+ggsave(p5[[1]], file= "plot.jpg", path=folder[i] , width=7, height=12)
+}
