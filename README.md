@@ -3,6 +3,7 @@
 In this project we studied role of GALC in Parkinson's disease
 
 ##GalCase activtiy GWAS##
+
 -At the first step we performed GWAS on GalCase activtiy in two independent cohorts with further meta-analysis
 -We then applied conditional and joint analyses (COJO) to identify independent SNPs in the GWASs after adjusting for the top hits
 -Next, we repeated GWASs adjusting for top hits and  meta-analysed results from both cohorts using METAL package in R 
