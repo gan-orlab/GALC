@@ -1,0 +1,172 @@
+
+library(coloc)          # Original coloc package, which is used to run coloc.abf() and sensitivity()
+library(colochelpR)     # Helper package with wrapper functions
+library(data.table)     # Loaded for fread(), which permits fast loading of files with many rows
+library(ggpubr)         # For formatting of plots
+library(here)           # For file path construction
+library(dplyr)
+library(dbplyr)
+library(tibble)
+library(purrr)
+library(locuscomparer)
+
+chr14_PD<-fread("PD_tidy_varbeta_noduplicates_GALC_500kb.txt")
+chr14_PD<-fread("GALC_coloc_23_andMe.txt")
+chr14_PD<-fread("META_no23_yesUKBB_chr4_SNCA_region.txt")
+# Do we have any significant SNPs?
+
+chr14_PD %>% dplyr::filter(p < 5e-8)
+
+
+GALC_gwas <- chr14_PD %>% 
+  mutate(s = N_cases / (N_cases + N_controls)) #%>% 
+#dplyr::select(rsID, A1, A2, freq, b, se, p, bp, s) %>%  
+#dplyr::rename(SNP = rsID)
+
+
+# Check for complete cases
+GALC_gwas[!complete.cases(GALC_gwas), ]
+
+# If any:
+#scarb2_gwas <- scarb2_gwas[complete.cases(scarb2_gwas), ]
+
+# Make varBetas
+GALC_gwas$varbeta = GALC_gwas$se*GALC_gwas$se
+
+# Get rid of a SNP with beta == 0
+GALC_gwas <- GALC_gwas[GALC_gwas$beta != 0, ]
+
+# Find MA beta and MAF
+GALC_gwas$b_MA <- GALC_gwas$beta
+GALC_gwas[GALC_gwas$frq > 0.50, ]$b_MA <- GALC_gwas[GALC_gwas$frq > 0.50, ]$b_MA *-1
+
+GALC_gwas$MAF <- GALC_gwas$frq
+GALC_gwas[GALC_gwas$frq > 0.50, ]$MAF <- 1 - GALC_gwas[GALC_gwas$frq > 0.50, ]$MAF
+
+
+##########################eQTL database######################################################################3
+#GALC_eqtl  <- read.table("/scratch/senkkon/GTEx_exon_brain_substantia_nigra.all_chr14_8.tsv", sep = '\t', header = T, stringsAsFactors = TRUE)
+#GALC_eqtl  <- read.table("/scratch/senkkon/GTEx_tx_brain_substantia_nigra.all_chr_14_8.tsv", sep = '\t', header = T, stringsAsFactors = TRUE)
+#GALC_eqtl  <- read.table("/scratch/senkkon/GTEx_txrev_brain_substantia_nigra.all_chr14_8.tsv", sep = '\t', header = T, stringsAsFactors = TRUE)
+GALC_eqtl  <- read.table("/scratch/senkkon/GTEx_ge_brain_substantia_nigra.all_chr14_8.tsv", sep = '\t', header = T, stringsAsFactors = TRUE)
+#GALC_eqtl  <- read.table("/scratch/senkkon/GTEx_tx_blood.all_chr_14_8.tsv", sep = '\t', header = T, stringsAsFactors = TRUE)
+#GALC_eqtl  <- read.table("/scratch/senkkon/GTEx_txrev_blood.all_chr_14_8.tsv", sep = '\t', header = T, stringsAsFactors = TRUE)
+#GALC_eqtl  <- read.table("/scratch/senkkon/GTEx_exon_blood.all_chr_14_8.tsv", sep = '\t', header = T, stringsAsFactors = TRUE)
+#GALC_eqtl  <- read.table("/scratch/senkkon/GTEx_ge_blood.all_chr_14_8.tsv", sep = '\t', header = T, stringsAsFactors = TRUE)
+#GALC_eqtl  <- read.table("/scratch/senkkon/GTEx_exon_brain_frontal_cortex_chr_14_8.tsv", sep = '\t', header = T, stringsAsFactors = TRUE)
+#GALC_eqtl  <- read.table("/scratch/senkkon/GTEx_ge_brain_frontal_cortex.all_14.tsv", sep = '\t', header = T, stringsAsFactors = TRUE)
+#GALC_eqtl  <- read.table("/scratch/senkkon/GTEx_tx_blood.all_chr_14_8.tsv", sep = '\t', header = T, stringsAsFactors = TRUE)
+
+#GALC_eqtl <- chr14_eQTL %>% filter(BP >= 88149358 & BP <= 88709615)
+#write.table(GALC_eqtl, file = "BrainSeq_exon_brain.all_filtered_14chr_galcregion.tsv", sep = '\t', row.names = F, na = "NA")
+hg38
+#GALC_eqtl <- GALC_eqtl %>% filter(BP >= 87899701 & BP <= 88959182 )
+#GALC_eqtl <- GALC_eqtl %>% filter(BP >= 87000000 & BP <= 89050000 )
+GALC_eqtl <- GALC_eqtl %>% filter(BP >= 87932514 & BP <= 87993682)
+
+
+#GALC_eqtl<- SN_sqt
+
+
+
+GALC_eqtl$b_MA <- GALC_eqtl$b
+#GALC_eqtl$b_MA <- GALC_eqtl$beta
+#GALC_eqtl[GALC_eqtl$Freq > 0.50, ]$b_MA <- GALC_eqtl[GALC_eqtl$Freq > 0.50, ]$b_MA *-1
+GALC_eqtl[GALC_eqtl$maf > 0.50, ]$b_MA <- GALC_eqtl[GALC_eqtl$maf > 0.50, ]$b_MA *-1
+GALC_eqtl$MAF <- GALC_eqtl$Freq
+#GALC_eqtl$MAF <- GALC_eqtl$maf
+GALC_eqtl[GALC_eqtl$maf > 0.50, ]$MAF <- 1 - GALC_eqtl[GALC_eqtl$maf > 0.50, ]$MAF
+#GALC_eqtl[GALC_eqtl$Freq > 0.50, ]$MAF <- 1 - GALC_eqtl[GALC_eqtl$Freq > 0.50, ]$MAF
+GALC_eqtl$varbeta = GALC_eqtl$SE*GALC_eqtl$SE
+#GALC_eqtl$varbeta = GALC_eqtl$se*GALC_eqtl$se
+GALC_eqtl1 <- GALC_eqtl %>% 
+# dplyr::rename(SNP = rsID, A1= ref, A2= alt, freq= maf, Gene= gene_id, Probe_bp= position, b=beta, SE=se, p=pvalue, MAF, varbeta, b_MA)
+  #dplyr::select(SNP, A1, BP, A2, Freq, Gene, BP, b, SE, p, MAF, varbeta, b_MA)
+  dplyr::select(SNP, Gene, b, varbeta, MAF)
+
+
+#GALC_eqtl <- GALC_eqtl[complete.cases(GALC_eqtl), ]
+
+df <- dplyr::inner_join(GALC_gwas, GALC_eqtl1, by = "SNP", suffix = c(".gwas", ".eqtl"))
+genes <- unique(df$Gene)
+my.res <- lapply(genes, function(x) {
+  df_sub <- df[df$Gene == x, ]
+  res <- coloc.abf(dataset1=list(beta=df_sub$beta, varbeta=df_sub$varbeta.gwas, s =df_sub$s, type="cc"),
+                   dataset2=list(beta=df_sub$b, varbeta=df_sub$varbeta.eqtl, N=nrow(df_sub), MAF=df_sub$MAF.eqtl, type="quant"))
+  res <- as.data.frame(t(res$summary))
+  return (data.frame(gene = x, res))
+})
+results <- do.call("rbind", my.res)
+results
+
+
+
+
+
+genes <- unique(df$Gene)
+my.res <- lapply(genes, function(x) {
+  df_sub <- df[df$Gene == x, ]
+  
+  # run coloc.abf() for each gene 
+  res <- coloc.abf(dataset1=list(beta=df_sub$b_MA.gwas, 
+                                 varbeta=df_sub$varbeta.gwas, 
+                                 s =df_sub$s, 
+                                 type="cc"),
+                   dataset2=list(beta=df_sub$b_MA.eqtl, 
+                                 varbeta=df_sub$varbeta.eqtl, 
+                                 N=nrow(df_sub), 
+                                 MAF=df_sub$MAF.eqtl, 
+                                 type="quant"))
+  # if result is significant - save SNPs in credible set...
+  if (res$summary[6] > 0.8){
+    o <- order(res$results$SNP.PP.H4,decreasing=TRUE)
+    cs <- cumsum(res$results$SNP.PP.H4[o])
+    w <- which(cs > 0.95)[1]
+    top_snps_index <- res$results[o,][1:w,]$snp
+    top_snps_index_num <- as.numeric(str_replace(top_snps_index, "SNP.", ""))
+    top_snps <- df_sub[top_snps_index_num, ]
+    
+    # save a table with SNPs
+    top_snps_output_name <- paste0("GTEx_ge_brain_substantia_nigra_top_snps.tsv")
+    write.table(top_snps, top_snps_output_name, sep = "\t", quote = F, row.names = F)
+    
+    # prepare datasets for locuscompare
+    df_sub_eqtl <- df_sub %>% 
+      dplyr::select(SNP, p.eqtl) %>%
+      dplyr::mutate(SNP = as.character(SNP)) %>% 
+      dplyr::rename(rsid = SNP, pval = p.eqtl)
+    df_sub_gwas <- df_sub %>% 
+      dplyr::select(SNP, p.gwas) %>%
+      dplyr::mutate(SNP = as.character(SNP)) %>%
+      dplyr::rename(rsid = SNP, pval = p.gwas)
+    
+    # plot significant colocalization
+    plot <- locuscompare(in_fn1=df_sub_gwas,
+                         in_fn2=df_sub_eqtl,
+                         title1="GWAS", 
+                         title2="eQTL", 
+                         genome="hg19", 
+                         population = "EUR")
+    
+    # save plot
+    ggsave(filename = "GTEx_ge_brain_substantia_nigra.pdf", 
+           plot = plot, 
+           device = "pdf",
+           width = 7, 
+           height = 4)
+  }
+  res <- as.data.frame(t(res$summary))
+  return (data.frame(gene = x, res))
+})
+
+# combine results
+results <- do.call("rbind", my.res)
+
+# save all
+all_res_output_name <- paste0("GTEx_ge_brain_substantia_nigra.tsv")
+write.table(results,"1", sep = "\t", quote = F, row.names = F)
+
+df_sub_eqtl <- df_sub %>% 
+      dplyr::select(SNP, p.eqtl) %>%
+      dplyr::mutate(SNP = as.character(SNP)) %>% 
+      dplyr::rename(rsid = SNP, pval = p.eqtl)
