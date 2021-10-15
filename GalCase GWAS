@@ -1,0 +1,278 @@
+#perform imputation using Michingan imputation website and IPDGC script
+#generate hardcalls using:
+for chnum in {1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22};
+  do
+  plink --vcf chr${chnum}.dose.vcf.gz --make-bed --out s1_chr$chnum --double-id
+  plink --bfile s1_chr$chnum --qual-scores chr$chnum.info 7 1 1 --qual-threshold 0.8 --make-bed --out plink_files/hard_calls/chr${chnum}
+done
+
+
+#Run regular GWAS 
+for chnum in {1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22};  do plink --bfile ../imputed/NY_chr1 --allow-no-sex  --bfile ../imputed/NY_chr9 --ci 0.95 --covar Covar_NY_filtered_new_mergedFID.txt --covar-name Sex, Age, Status, Ethn, PC1, PC2, PC3 --freq --geno 0.05 --hide-covar --maf 0.01 --out NY_GWAS_GALC_chr1 --pheno pheno.txt ; done
+plink --bfile hc_ny_add.sam_phenoGALC_sex  --linear --geno 0.05 --maf 0.01 --ci 0.95 --freq --hide-covar --covar covar_NY_addsam.txt --covar-name Sex, Age, Status, Ethn, PC1, PC2, PC3 --out NY_GALC_GWAS_non_adj
+plink --bfile hc_ny_add.sam_phenoGALC_sex  --linear --geno 0.05 --maf 0.01 --ci 0.95 --freq --hide-covar --condition 14:88410227:G:C --covar covar_NY_addsam.txt --covar-name Sex, Age, Status, Ethn, PC1, PC2, PC3 --out NY_GALC_GWAS_adj_14_88391374
+plink --bfile hc_ny_add.sam_phenoGALC_sex  --linear --geno 0.05 --maf 0.01 --ci 0.95 --freq --hide-covar --condition-list snps.txt --covar covar_NY_addsam.txt --covar-name Sex, Age, Status, Ethn, PC1, PC2, PC3 --out NY_GALC_GWAS_adj_2SNPs 
+
+plink --bfile PPMI_hardCalls_with_activity  --linear --geno 0.05 --maf 0.01 --ci 0.95 --freq --hide-covar --covar Covar_PPMI_withPC.txt --covar-name Sex, Age, Status, WBC_mean, PC1, PC2, PC3 --out PPMI_hardCalls_with_activity
+
+awk -F" " '{if ($12<=5e-08) print $0}' NY_GWAS_GALC.assoc.linear > NY_GWAS_GALC.assoc.linear_significant
+awk -F" " '{if ($12<=5e-08) print $0}' PPMI_hardCalls_with_activity > PPMI_hardCalls_with_activity_significant
+
+
+#### To run COJO, we need to prepare GWAS output file the with columns in a special order: SNP A1 A2 freq b se p N
+
+module load gcc/7.3 r/3.5.2
+R
+.libPaths( c( "~/runs/eyu8/library/TWAS" , "/cvmfs/soft.computecanada.ca/easybuild/software/2017/avx512/Compiler/gcc7.3/r/3.5.2/lib64/R/library" ) )
+
+library(data.table)     # Loaded for fread(), which permits fast loading of files with many rows
+library(dplyr)
+library(dbplyr)
+library(tibble)
+
+
+require(data.table)
+data1<-fread("NY_GALC_GWAS_non_adj.assoc.linear")
+data2<-fread("NY_GALC_GWAS_non_adj.frq")
+#data1<-fread("NY_GALC_GWAS_adj_1snp.frq")
+#data2<-fread("NY_GALC_GWAS_adj_1snp.assoc.linear")
+data1<-fread("NY_GALC_GWAS_adj_2snps.frq")
+data2<-fread("NY_GALC_GWAS_adj_2snps.assoc.linear")
+final <- merge(data1, data2, by.x = "SNP", by.y="SNP")
+head(final)
+write.table(final, file="NY_GALC_GWAS_non_adj.assoc.linear_frq", row.names=FALSE, quote=FALSE, sep = "\t")
+write.table(final, file="NY_GALC_GWAS_adj_1snp.assoc.linear_frq", row.names=FALSE, quote=FALSE, sep = "\t")
+write.table(final, file="NY_GALC_GWAS_adj_2snps.assoc.linear_frq", row.names=FALSE, quote=FALSE, sep = "\t")
+
+
+NY_sumstats_COJO <- NY_sumstats %>% 
+  dplyr::select(SNP, A1.y, A2, MAF, BETA, SE, P, NMISS)
+
+write.table(NY_sumstats_COJO, file="NY_sumstats_COJO.ma", row.names=FALSE, quote=FALSE, sep = "\t")
+
+
+#### To run COJO, we need to prepare GWAS output file the with columns in a special order: SNP A1 A2 freq b se p N
+
+#module load gcc/7.3 r/3.5.2
+#R
+#.libPaths( c( "~/runs/eyu8/library/TWAS" , "/cvmfs/soft.computecanada.ca/easybuild/software/2017/avx512/Compiler/gcc7.3/r/3.5.2/lib64/R/library" ) )
+
+#library(data.table)     # Loaded for fread(), which permits fast loading of files with many rows
+#library(dplyr)
+#library(dbplyr)
+#library(tibble)
+
+#PPMI_sumstats <- fread("PPMI_GWAS_GALC_PC.assoc.linear_freq_PC.txt")
+
+#PPMI_sumstats_COJO <- PPMI_sumstats %>% 
+#  dplyr::select(SNP, A1, A2, MAF, BETA, SE, P, NMISS)
+
+#write.table(PPMI_sumstats_COJO, file="PPMI_sumstats_COJO.ma", row.names=FALSE, quote=FALSE, sep = "\t")
+
+
+#PPMI_sumstats <- fread("PPMI_GWAS_GALC_PC.assoc.linear_freq_PC.txt")
+#PPMI_sumstats_COJO <- PPMI_sumstats %>% 
+#  dplyr::select(SNP, A1, A2, MAF, BETA, SE, P, NMISS)
+#write.table(PPMI_sumstats_COJO, file="PPMI_sumstats_COJO.ma", row.names=FALSE, quote=FALSE, sep = "\t")
+#NY_sumstats <- fread("NY_GWAS_GALC_chr.assoc.linear_all_chr_freq")
+
+
+####Running cojo and later selecting top chr14 GALC snps and adjusting for them in the analysis making two more GWASs.
+gcta64 --cojo-file PPMI_sumstats_COJO.ma --bfile PPMI_hardCalls_with_activity --cojo-slct --cojo-p 5e-8 --out PPMI_hardCalls_cojo
+Strongest GWAS hit for PPMI is 14:88410227:G:C  and second is 14:88415422:T:C
+
+gcta64 --cojo-file NY_sumstats_COJO.ma --bfile  ../chr14 --cojo-slct --cojo-p 5e-8 --out NY_chr$chnum_gcta
+Strongest GWAS hit for NY is 14:88391374:T:G  and second is 14:88470978:C:T
+
+
+#Conditional GWAS for PPMI
+plink --bfile PPMI_hardCalls --linear  --geno 0.05 --maf 0.01 --ci 0.95 --freq --condition 14:88410227:G:C --hide-covar --covar Covar_PPMI_withPC.txt --covar-name Sex, Age, Status, WBC_mean, PC1, PC2, PC3 --out PPMI_GWAS_GALC_condition_14:88410227
+
+####Condition on 2 snps
+plink --bfile ../PPMI_hardCalls --linear  --geno 0.05 --maf 0.01 --ci 0.95 --freq --condition-list snps.txt --hide-covar --covar ../Covar_PPMI_withPC.txt --covar-name Sex, Age, Status, WBC_mean, PC1, PC2, PC3 --out PPMI_GWAS_GALC_condition_2snps
+
+
+#Conditional GWAS for NY
+plink --bfile ../../NY_merged_imputed --allow-no-sex --ci 0.95 --covar ../Covar_NY_filtered_new_mergedFID.txt --covar-name Sex, Age, Status, Ethn, PC1, PC2, PC3 --condition 14:88391374:T:G --linear --freq --geno 0.05 --hide-covar --maf 0.01 --out NY_GWAS_GALC_chr$chnum --pheno ../pheno.txt
+####Condition on 2 snps
+plink --bfile ../../NY_merged_imputed --allow-no-sex --ci 0.95 --covar ../Covar_NY_filtered_new_mergedFID.txt --covar-name Sex, Age, Status, Ethn, PC1, PC2, PC3 --condition-list snps.txt --linear --freq --geno 0.05 --hide-covar --maf 0.01 --out NY_GWAS_GALC_chr$chnum --pheno ../pheno.txt
+
+
+
+###merge assoc linear and frq to run after meta-analysis.
+require(data.table)
+data1<-fread("NY_GWAS_GALC_chr.assoc.linear_conditional_14_88391374")
+data2<-fread("NY_GWAS_GALC_chr.frq_conditional_14_88391374")
+final <- merge(data1, data2, by.x = "SNP", by.y="SNP")
+write.table(final, file="NY_GWAS_GALC_chr.assoc.linear_conditional_14_88391374_frq", row.names=FALSE, quote=FALSE, sep = "\t")
+
+
+require(data.table)
+data1<-fread("NY_GALC_GWAS_non_adj.assoc.linear")
+data2<-fread("NY_GALC_GWAS_non_adj.frq")
+final <- merge(data1, data2, by.x = "SNP", by.y="SNP")
+write.table(final, file="NY_GALC_GWAS_non_adj.assoc.linear_frq", row.names=FALSE, quote=FALSE, sep = "\t")
+
+
+
+###
+data1<-fread("PPMI_GWAS_GALC_condition_2snps.frq")
+data2<-fread("PPMI_GWAS_GALC_condition_2snps.assoc.linear")
+final <- merge(data1, data2, by.x = "SNP", by.y="SNP")
+write.table(final, file="PPMI_GWAS_GALC_condition_2snps.assoc.linear_frq", row.names=FALSE, quote=FALSE, sep = "\t")
+
+#data <- read.csv("PPMI_GWAS_GALC_PC.assoc.linear_freq_PC.txt", header = TRUE, na.strings=c("","NA"))
+data<-fread("PPMI_GWAS_GALC_PC.assoc.linear_freq_PC.txt")
+data<-fread("NY_GWAS_GALC_chr.assoc.linear_all_chr_freq")
+
+data<-fread("NY_GWAS_GALC_chr.assoc.linear_conditional_14_88391374_frq")
+data<-fread("PPMI_GWAS_GALC_condition_14:88410227.assoc.linear_frq")
+data<-fread("PPMI_GWAS_GALC_condition_2snps.assoc.linear_frq")
+data<-fread("NY_GWAS_GALC_chr_.assoc.linear_all_freq_non_adj.txt")
+data<-fread("NY_GWAS_GALC_chr.assoc.linear_conditional_14_88391374_frq")
+#create betas
+data$beta <- data$BETA
+data$se <- data$SE
+data$minorAllele <- data$A1.x
+data$majorAllele <- data$A2
+
+## Meta script, needs modifying to fit existing data
+
+#dat<-fread("NY_GALC_GWAS_non_adj.assoc.linear_frq")
+#dat<-fread("NY_GALC_GWAS_adj_1snp.assoc.linear_frq")
+dat<-fread("NY_GALC_GWAS_adj_2snps.assoc.linear_frq")
+dat$beta <- dat$BETA
+dat$se <- dat$SE
+dat$minorAllele <- dat$A1.x
+dat$majorAllele <- dat$A2
+dat <- subset(dat, P != "NA")
+#dat$markerID <- paste(dat$Chr,dat$Position, sep = ":")
+dat$markerID <- paste(dat$SNP)
+dat$N <- paste(dat$NMISS)
+dat$maf <- ifelse(dat$MAF <= 0.5, dat$MAF, (1-dat$MAF))
+dat0 <- dat[,c("markerID","minorAllele","majorAllele","beta","se","maf","P","N")]
+#write.table(dat0, file=paste("toMeta.PPMI_GWAS_GALC.tab"), quote = F, sep = "\t", row.names = F)
+#write.table(dat0, file=paste("toMeta.PPMI_GWAS_GALC_1snp.tab"), quote = F, sep = "\t", row.names = F)
+#write.table(dat0, file=paste("toMeta.PPMI_GWAS_GALC_2snps.tab"), quote = F, sep = "\t", row.names = F)
+#write.table(dat0, file=paste("toMeta.NY_GWAS_GALC.tab"), quote = F, sep = "\t", row.names = F)
+#write.table(dat0, file=paste("toMeta.NY_GWAS_GALC_condition_1snp.tab"), quote = F, sep = "\t", row.names = F)
+write.table(dat0, file=paste("toMeta.NY_GWAS_GALC_condition_2snps.tab"), quote = F, sep = "\t", row.names = F)
+q()
+
+####data preparation for mirror plot
+
+module load gcc/7.3 r/3.5.2
+R
+.libPaths( c( "~/runs/eyu8/library/TWAS" , "/cvmfs/soft.computecanada.ca/easybuild/software/2017/avx512/Compiler/gcc7.3/r/3.5.2/lib64/R/library" ) )
+
+library(data.table)     # Loaded for fread(), which permits fast loading of files with many rows
+library(dplyr)
+library(dbplyr)
+library(tibble)
+
+#data<-fread("NY_GWAS_GALC_chr_.assoc.linear_all_freq_non_adj.txt")
+#data<-fread("NY_GWAS_GALC_chr.assoc.linear_conditional_14_88391374_frq")
+#data<-fread("NY_GWAS_GALC_chr.assoc.linear_conditional_2_SNPs")
+#data<-fread("NY_GALC_GWAS_non_adj.assoc.linear_frq")
+#data<-fread("NY_GALC_GWAS_adj_1snp.assoc.linear_frq")
+data<-fread("NY_GALC_GWAS_adj_2snps.assoc.linear_frq")
+
+
+data$CHR <- data$CHR.x
+data$POS <- data$BP
+data$pvalue <- data$P
+
+data1 <- data %>% 
+  dplyr::select(SNP, CHR, POS, pvalue)
+
+head(data1)
+
+#write.table(data1, file="Mirror_NY_GWAS_GALC_not_adj.tab", row.names=FALSE, quote=FALSE, sep = "\t")
+#write.table(data1, file="Mirror_NY_GWAS_GALC_condition_1snp.tab", row.names=FALSE, quote=FALSE, sep = "\t")
+write.table(data1, file="Mirror_NY_GWAS_GALC_condition_2snps.tab", row.names=FALSE, quote=FALSE, sep = "\t")
+
+
+
+####PPMI for mirror plots
+
+#data<-fread("PPMI_GWAS_GALC_PC.assoc.linear_freq_PC.txt")
+#data<-fread("PPMI_GWAS_GALC_condition_14:88410227.assoc.linear_frq")
+data<-fread("PPMI_GWAS_GALC_condition_2snps.assoc.linear_frq")
+head(data)
+data$CHR <- data$CHR.x
+data$POS <- data$BP
+data$pvalue <- data$P
+
+data1 <- data %>% 
+  dplyr::select(SNP, CHR, POS, pvalue)
+
+head(data1)
+#write.table(data1, file="Mirror_PPMI_GWAS_GALC_non_adj.tab", row.names=FALSE, quote=FALSE, sep = "\t")
+#write.table(data1, file="Mirror_PPMI_GWAS_GALC_1snp.tab", row.names=FALSE, quote=FALSE, sep = "\t")
+write.table(data1, file="Mirror_PPMI_GWAS_GALC_2snps.tab", row.names=FALSE, quote=FALSE, sep = "\t")
+
+
+
+
+#####Mirror plots using hudson package#########
+
+#########mirror plot not adjusted
+
+module load singularity/3.5
+singularity exec -B ~/runs/:/project ~/runs/eyu8/soft/hudson.sif R
+.libPaths ("/usr/local/lib64/R/library")
+require("hudson")
+require(data.table)
+
+gwas.t<-fread("Mirror_NY_GWAS_GALC_not_adj.tab")
+head(gwas.t)
+gwas.b<-fread("Mirror_PPMI_GWAS_GALC_non_adj.tab")
+
+gmirror(top=gwas.t, bottom=gwas.b, tline=5E-8, bline=5E-8, 
+        toptitle="NY_not_adjusted", bottomtitle = "PPMI_not_adjusted", 
+        highlight_p = c(5E-8, 5E-8), highlighter="green")
+
+q()
+mv gmirror.png Mirror_NY_PPMI_GWAS_GALC_not_adj.png
+
+###mirror-plot adjusted for 1 SNP
+
+module load singularity/3.5
+singularity exec -B ~/runs/:/project ~/runs/eyu8/soft/hudson.sif R
+.libPaths ("/usr/local/lib64/R/library")
+require("hudson")
+require(data.table)
+
+gwas.t<-fread("Mirror_NY_GWAS_GALC_condition_1snp.tab")
+head(gwas.t)
+gwas.b<-fread("Mirror_PPMI_GWAS_GALC_1snp.tab")
+
+gmirror(top=gwas.t, bottom=gwas.b, tline=5E-8, bline=5E-8, 
+        toptitle="NY_adjusted_GALC_top_hit", bottomtitle = "PPMI_adjusted_GALC_top_hit", 
+        highlight_p = c(5E-8, 5E-8), highlighter="green")
+
+q()
+mv gmirror.png Mirror_NY_PPMI_GWAS_GALC__condition_1snp.png
+
+###mirror-plot adjusted for 2 SNPs
+
+
+module load singularity/3.5
+singularity exec -B ~/runs/:/project ~/runs/eyu8/soft/hudson.sif R
+.libPaths ("/usr/local/lib64/R/library")
+require("hudson")
+require(data.table)
+
+
+gwas.t<-fread("Mirror_NY_GWAS_GALC_condition_2snps.tab")
+head(gwas.t)
+gwas.b<-fread("Mirror_PPMI_GWAS_GALC_2snps.tab")
+
+gmirror(top=gwas.t, bottom=gwas.b, tline=5E-8, bline=5E-8, 
+        toptitle="NY_adjusted_two_GALC_top_hits", bottomtitle = "PPMI_adjusted_two_GALC_top_hits", 
+        highlight_p = c(5E-8, 5E-8), highlighter="green")
+
+q()
+mv gmirror.png Mirror_NY_PPMI_GWAS_GALC__condition_2snps.png
+
+
